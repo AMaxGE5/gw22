@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>PvZ Online</title>
+<style>
+body{margin:0;background:#000;color:#fff;text-align:center}
+#menu{position:absolute;width:100%;top:20%}
+canvas{display:none}
+</style>
+</head>
+<body>
+
+<div id="menu">
+  <h1>PvZ ONLINE</h1>
+
+  <button onclick="createRoom()">CREAR SALA</button>
+  <br><br>
+
+  <input id="code" placeholder="Código">
+  <br><br>
+
+  <button onclick="joinPlants()">PLANTAS</button>
+  <button onclick="joinZombies()">ZOMBIES</button>
+</div>
+
+<canvas id="game"></canvas>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script>
+const socket = io();
+
+let scene,camera,renderer;
+let player,players={};
+let team="plants";
+
+/* ===== MENU ===== */
+
+function createRoom(){
+  socket.emit("createRoom");
+}
+
+function joinPlants(){
+  team="plants";
+  join();
+}
+
+function joinZombies(){
+  team="zombies";
+  join();
+}
+
+function join(){
+  const code=document.getElementById("code").value;
+  socket.emit("joinRoom",{code,team});
+}
+
+socket.on("roomCreated",(code)=>{
+  alert("Sala: "+code);
+});
+
+socket.on("joined",(data)=>{
+  startGame();
+
+  for(let id in data.players){
+    if(id!==socket.id){
+      createPlayer(id,data.players[id]);
+    }
+  }
+});
+
+socket.on("newPlayer",(data)=>{
+  createPlayer(data.id,data.data);
+});
+
+socket.on("playerMove",(data)=>{
+  if(players[data.id]){
+    players[data.id].position.set(data.x,data.y,data.z);
+  }
+});
+
+socket.on("playerLeft",(id)=>{
+  scene.remove(players[id]);
+  delete players[id];
+});
+
+/* ===== GAME ===== */
+
+function createPlayer(id,data){
+  const color = data.team==="plants"?0x00ff00:0xff0000;
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(),
+    new THREE.MeshBasicMaterial({color})
+  );
+  scene.add(mesh);
+  players[id]=mesh;
+}
+
+function startGame(){
+  document.getElementById("menu").style.display="none";
+
+  const canvas=document.getElementById("game");
+  canvas.style.display="block";
+
+  renderer=new THREE.WebGLRenderer({canvas});
+  renderer.setSize(innerWidth,innerHeight);
+
+  scene=new THREE.Scene();
+  scene.background=new THREE.Color(0x87ceeb);
+
+  camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,0.1,1000);
+  camera.position.z=5;
+
+  const color = team==="plants"?0x00ff00:0xff0000;
+
+  player=new THREE.Mesh(
+    new THREE.BoxGeometry(),
+    new THREE.MeshBasicMaterial({color})
+  );
+
+  scene.add(player);
+
+  document.addEventListener("keydown",move);
+
+  loop();
+}
+
+function move(e){
+  if(e.key==="w") player.position.z-=0.3;
+  if(e.key==="s") player.position.z+=0.3;
+  if(e.key==="a") player.position.x-=0.3;
+  if(e.key==="d") player.position.x+=0.3;
+
+  socket.emit("move",{
+    x:player.position.x,
+    y:player.position.y,
+    z:player.position.z
+  });
+}
+
+function loop(){
+  requestAnimationFrame(loop);
+  renderer.render(scene,camera);
+}
+</script>
+
+</body>
+</html>
